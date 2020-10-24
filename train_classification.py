@@ -76,6 +76,8 @@ class PlantsDataset_test(torch.utils.data.Dataset):
 
 def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interval, total_num):
   losses = AverageMeter()
+  losses_plant = AverageMeter()
+  losses_disease = AverageMeter()
   acces_plant = AverageMeter()
   acces_disease = AverageMeter()
   f1s_plant = AverageMeter()
@@ -106,6 +108,8 @@ def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interva
     f1_disease, acc_disease = get_f1_score(pred_disease.detach(), disease)
 
     losses.update(loss.data.cpu(), batch_size)
+    losses_plant.update(loss_plant.data.cpu(), batch_size)
+    losses_disease.update(loss_disease.data.cpu(), batch_size)
     acces_plant.update(acc_plant, batch_size)
     acces_disease.update(acc_disease, batch_size)
     f1s_plant.update(f1_plant, batch_size)
@@ -114,6 +118,8 @@ def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interva
     if i_batch % log_interval == 0:
       print('Train Epoch:{} [{}/{}] Loss:{:.4f}({:.4f}) f1_plant:{:.3f}({:.3f}) f1_disease:{:.3f}({:.3f}) Accuracy_plant:{:.2f} ({:.2f}) Accuracy_disease:{:.2f} ({:.2f})'.format(epoch, i_batch * batch_size, total_num, losses.val,losses.avg, f1s_plant.val, f1s_plant.avg, f1s_disease.val, f1s_disease.avg, acces_plant.val,acces_plant.avg, acces_disease.val,acces_disease.avg))
       neptune.log_metric("train_losses_avg", losses.avg)
+      neptune.log_metric("train_losses_plant_avg", losses_plant.avg)
+      neptune.log_metric("train_losses_disease_avg", losses_disease.avg)
       neptune.log_metric("train_f1_plant", f1s_plant.avg)
       neptune.log_metric("train_f1_disease", f1s_disease.avg)
   return losses.avg, f1s_plant.avg, f1s_disease.avg
@@ -191,9 +197,9 @@ class_disease = 21
 
 # opts
 img_size = 224 #256? 224?
-batch_size = 100
+batch_size = 30
 log_interval = 10
-epochs = 10
+epochs = 100
 
 validation_ratio = 0.2
 
@@ -227,7 +233,7 @@ val_loader = torch.utils.data.DataLoader(
                   batch_size = batch_size, sampler = valid_sampler)
 
 test_loader = torch.utils.data.DataLoader(
-    PlantsDataset_test('test', "test.tsv", r"C:\Users\jadoh\PycharmProjects\IngGongJiNeung\Dataset\test",
+    PlantsDataset_test('test', "test.tsv", "/content/drive/My Drive/Colab Notebooks/dataset/test",
                   transform=transforms.Compose([transforms.Resize(img_size), transforms.ToTensor(),
                                                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                                      std=[0.229, 0.224, 0.225])])),
@@ -254,5 +260,5 @@ for epoch in range(epochs):
   f1_val_plant, f1_val_disease = validate(val_loader, model, epoch, use_gpu, log_interval, len(valid_idx))
   print("finished training epoch: ", epoch)
   print("loss: ", loss)
-    
+
 test(test_loader, model)
