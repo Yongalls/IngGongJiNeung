@@ -10,9 +10,6 @@ import os
 from PIL import Image
 import neptune
 
-# experiment
-exp_id = 32
-
 # constants
 class_plants = 14
 class_disease = 21
@@ -158,35 +155,10 @@ def validate(val_loader, model, epoch, use_gpu, log_interval, total_num):
         neptune.log_metric("val_f1_disease", f1s_disease.avg)
   return f1s_plant.avg, f1s_disease.avg
 
-def test(test_loader, model):
-
-    model.eval()
-    answer_list=[]
-    f = open("answer.csv", "w")
-
-    with torch.no_grad():
-        for i_batch, data in enumerate(test_loader):
-            img = data
-            if use_gpu:
-                img=img.cuda()
-            preds = model(img)
-            pred_plant = torch.softmax(preds[:, :class_plants], dim=1)
-            pred_disease = torch.softmax(preds[:, class_plants:], dim=1)
-            for i in range(preds.shape[0]):
-                pred_plant_num = torch.argmax(pred_plant, dim=1)[i]
-                pred_plant_num = pred_plant_num.item()
-                pred_disease_num = torch.argmax(pred_disease, dim=1)[i]
-                pred_disease_num = pred_disease_num.item()
-                answer=str(i_batch*batch_size+i)+'.jpg'+'_'+str(pred_plant_num)+'_'+str(pred_disease_num)
-                answer_list.append(answer)
-    for i in range(len(answer_list)):
-        f.write(answer_list[i]+'\n')
-    f.close()
-
-    return len(answer_list)
 
 neptune.init('jadohu/IngGongJiNeung', api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiM2JiNmYzMzQtMDYxYS00ZGVhLTk4NmMtZDY3YjA0NTc2NDAxIn0=')
 neptune.create_experiment(name='Ing')
+exp_id = neptune.get_experiment()._id
 
 use_gpu = torch.cuda.is_available()
 if use_gpu:
@@ -245,12 +217,12 @@ for epoch in range(epochs):
   print("finished training epoch: ", epoch)
 
   if f1_val_plant > best_plant:
-    file_name = os.path.join(rootPath, 'run', str(exp_id) + "_plant_best.pt")
+    file_name = os.path.join(rootPath, 'run', exp_id + "_plant_best.pt")
     torch.save(model.state_dict(), file_name)
     print("Model saved (best plant). f1_plant:{:.3f} f1_disease:{:.3f}".format(f1_val_plant, f1_val_disease))
 
   if f1_val_disease > best_disease:
-    file_name = os.path.join(rootPath, 'run', str(exp_id) + "_disease_best.pt")
+    file_name = os.path.join(rootPath, 'run', exp_id + "_disease_best.pt")
     torch.save(model.state_dict(), file_name)
     print("Model saved (best disease). f1_plant:{:.3f} f1_disease:{:.3f}".format(f1_val_plant, f1_val_disease))
 
