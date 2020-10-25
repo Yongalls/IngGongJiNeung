@@ -226,4 +226,7 @@ for epoch in range(epochs):
     torch.save(model.state_dict(), file_name)
     print("Model saved (best disease). f1_plant:{:.3f} f1_disease:{:.3f}".format(f1_val_plant, f1_val_disease))
 
+  best_plant = max(f1_val_plant, best_plant)
+  best_disease = max(f1_val_disease, best_disease)
+
 print("training finished")
