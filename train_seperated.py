@@ -1,3 +1,5 @@
+# Training by two diffrent models (plant, disease)
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -25,7 +27,7 @@ try:
   import google.colab
   print("running on colab")
   rootPath = "/content/drive/My Drive/Colab Notebooks"
-  batch_size = 100
+  batch_size = 50
 except:
   print("running on local")
   rootPath = r"C:\Users\jadoh\PycharmProjects\IngGongJiNeung"
@@ -72,8 +74,7 @@ class PlantsDataset(torch.utils.data.Dataset):
     img = self.transform(img)
     return img, plant_class, disease_class
 
-def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interval, total_num):
-  losses = AverageMeter()
+def train(train_loader, model_plant, model_disease, criterion, optimizer_plant, optimizer_disease, epoch, use_gpu, log_interval, total_num):
   losses_plant = AverageMeter()
   losses_disease = AverageMeter()
   acces_plant = AverageMeter()
@@ -81,7 +82,8 @@ def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interva
   f1s_plant = AverageMeter()
   f1s_disease = AverageMeter()
 
-  model.train()
+  model_plant.train()
+  model_disease.train()
 
   for i_batch, data in enumerate(train_loader):
     img, plant, disease = data
@@ -89,23 +91,24 @@ def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interva
       img, plant, disease = img.cuda(), plant.cuda(), disease.cuda()
     img, plant, disease = Variable(img), Variable(plant), Variable(disease)
 
-    optimizer.zero_grad()
+    optimizer_plant.zero_grad()
+    optimizer_disease.zero_grad()
 
-    preds = model(img)
-    pred_plant = torch.softmax(preds[:,:class_plants], dim = 1)
-    pred_disease = torch.softmax(preds[:, class_plants:], dim = 1)
+    pred_plant = torch.softmax(model_plant(img), dim = 1)
+    pred_disease = torch.softmax(model_disease(img), dim = 1)
 
     loss_plant = criterion(pred_plant, plant)
     loss_disease = criterion(pred_disease, disease)
-    loss = loss_plant + loss_disease
 
-    loss.backward()
-    optimizer.step()
+    loss_plant.backward()
+    loss_disease.backward()
+
+    optimizer_plant.step()
+    optimizer_disease.step()
 
     f1_plant, acc_plant = get_f1_score(pred_plant.detach(), plant)
     f1_disease, acc_disease = get_f1_score(pred_disease.detach(), disease)
 
-    losses.update(loss.data.cpu(), batch_size)
     losses_plant.update(loss_plant.data.cpu(), batch_size)
     losses_disease.update(loss_disease.data.cpu(), batch_size)
     acces_plant.update(acc_plant, batch_size)
@@ -114,21 +117,21 @@ def train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interva
     f1s_disease.update(f1_disease, batch_size)
 
     if i_batch % log_interval == 0:
-      print('Train Epoch:{} [{}/{}] Loss:{:.4f}({:.4f}) f1_plant:{:.3f}({:.3f}) f1_disease:{:.3f}({:.3f}) Accuracy_plant:{:.2f} ({:.2f}) Accuracy_disease:{:.2f} ({:.2f})'.format(epoch, i_batch * batch_size, total_num, losses.val,losses.avg, f1s_plant.val, f1s_plant.avg, f1s_disease.val, f1s_disease.avg, acces_plant.val,acces_plant.avg, acces_disease.val,acces_disease.avg))
-      neptune.log_metric("train_losses_avg", losses.avg)
+      print('Train Epoch:{} [{}/{}] Loss_plant:{:.4f}({:.4f}) Loss_disease:{:.4f}({:.4f}) f1_plant:{:.3f}({:.3f}) f1_disease:{:.3f}({:.3f}) Accuracy_plant:{:.2f} ({:.2f}) Accuracy_disease:{:.2f} ({:.2f})'.format(epoch, i_batch * batch_size, total_num, losses_plant.val,losses_plant.avg, losses_disease.val, losses_disease.avg, f1s_plant.val, f1s_plant.avg, f1s_disease.val, f1s_disease.avg, acces_plant.val,acces_plant.avg, acces_disease.val,acces_disease.avg))
       neptune.log_metric("train_losses_plant_avg", losses_plant.avg)
       neptune.log_metric("train_losses_disease_avg", losses_disease.avg)
       neptune.log_metric("train_f1_plant", f1s_plant.avg)
       neptune.log_metric("train_f1_disease", f1s_disease.avg)
-  return losses.avg, f1s_plant.avg, f1s_disease.avg
+  return losses_plant.avg, losses_disease.avg, f1s_plant.avg, f1s_disease.avg
 
-def validate(val_loader, model, epoch, use_gpu, log_interval, total_num):
+def validate(val_loader, model_plant, model_disease, epoch, use_gpu, log_interval, total_num):
   acces_plant = AverageMeter()
   acces_disease = AverageMeter()
   f1s_plant = AverageMeter()
   f1s_disease = AverageMeter()
 
-  model.eval()
+  model_plant.eval()
+  model_disease.eval()
 
   with torch.no_grad():
     for i_batch, data in enumerate(val_loader):
@@ -137,9 +140,8 @@ def validate(val_loader, model, epoch, use_gpu, log_interval, total_num):
         img, plant, disease = img.cuda(), plant.cuda(), disease.cuda()
       img, plant, disease = Variable(img), Variable(plant), Variable(disease)
 
-      preds = model(img)
-      pred_plant = torch.softmax(preds[:,:class_plants], dim = 1)
-      pred_disease = torch.softmax(preds[:, class_plants:], dim = 1)
+      pred_plant = torch.softmax(model_plant(img), dim = 1)
+      pred_disease = torch.softmax(model_disease(img), dim = 1)
 
       f1_plant, acc_plant = get_f1_score(pred_plant.detach(), plant)
       f1_disease, acc_disease = get_f1_score(pred_disease.detach(), disease)
@@ -159,7 +161,7 @@ def validate(val_loader, model, epoch, use_gpu, log_interval, total_num):
 neptune.init('jadohu/IngGongJiNeung', api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiM2JiNmYzMzQtMDYxYS00ZGVhLTk4NmMtZDY3YjA0NTc2NDAxIn0=')
 neptune.create_experiment(name='Ing')
 exp_id = neptune.get_experiment()._id
-print(exp_id)
+print("experiment: ", exp_id)
 
 use_gpu = torch.cuda.is_available()
 if use_gpu:
@@ -194,38 +196,46 @@ val_loader = torch.utils.data.DataLoader(
                   batch_size = batch_size, sampler = valid_sampler)
 
 
-model = models.resnet50(pretrained=True)
-num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, class_plants + class_disease)
+model_plant = models.resnet50(pretrained=True)
+num_ftrs = model_plant.fc.in_features
+model_plant.fc = nn.Linear(num_ftrs, class_plants)
+
+model_disease = models.resnet50(pretrained=True)
+num_ftrs = model_disease.fc.in_features
+model_disease.fc = nn.Linear(num_ftrs, class_disease)
 
 if use_gpu:
-  model.cuda()
+  model_plant.cuda()
+  model_disease.cuda()
 
 criterion = nn.CrossEntropyLoss().cuda()
 
-optimizer = torch.optim.Adam(model.parameters(), lr = 0.001, betas=(0.9, 0.999))
+optimizer_plant = torch.optim.Adam(model_plant.parameters(), lr = 0.001, betas=(0.9, 0.999))
+optimizer_disease = torch.optim.Adam(model_disease.parameters(), lr = 0.001, betas=(0.9, 0.999))
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,  milestones=[50, 150], gamma=0.1)
+scheduler_plant = torch.optim.lr_scheduler.MultiStepLR(optimizer_plant,  milestones=[50, 150], gamma=0.1)
+scheduler_disease = torch.optim.lr_scheduler.MultiStepLR(optimizer_disease,  milestones=[50, 150], gamma=0.1)
 
 best_plant = 0
 best_disease = 0
 
 for epoch in range(epochs):
-  scheduler.step()
+  scheduler_plant.step()
+  scheduler_disease.step()
   print("starting training epoch: ", epoch)
-  loss, f1_train_plant, f1_train_disease = train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interval, len(train_idx))
-  f1_val_plant, f1_val_disease = validate(val_loader, model, epoch, use_gpu, log_interval, len(valid_idx))
+  _, _, f1_train_plant, f1_train_disease = train(train_loader, model_plant, model_disease, criterion, optimizer_plant, optimizer_disease, epoch, use_gpu, log_interval, len(train_idx))
+  f1_val_plant, f1_val_disease = validate(val_loader, model_plant, model_disease, epoch, use_gpu, log_interval, len(valid_idx))
   print("finished training epoch: ", epoch)
 
   if f1_val_plant > best_plant:
     file_name = os.path.join(rootPath, 'run', exp_id + "_plant_best.pt")
-    torch.save(model.state_dict(), file_name)
-    print("Model saved (best plant). f1_plant:{:.3f} f1_disease:{:.3f}".format(f1_val_plant, f1_val_disease))
+    torch.save(model_plant.state_dict(), file_name)
+    print("Model saved (best plant). f1_plant:{:.3f}".format(f1_val_plant))
 
   if f1_val_disease > best_disease:
     file_name = os.path.join(rootPath, 'run', exp_id + "_disease_best.pt")
-    torch.save(model.state_dict(), file_name)
-    print("Model saved (best disease). f1_plant:{:.3f} f1_disease:{:.3f}".format(f1_val_plant, f1_val_disease))
+    torch.save(model_disease.state_dict(), file_name)
+    print("Model saved (best disease). f1_disease:{:.3f}".format(f1_val_disease))
 
   best_plant = max(f1_val_plant, best_plant)
   best_disease = max(f1_val_disease, best_disease)
