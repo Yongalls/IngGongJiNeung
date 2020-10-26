@@ -192,7 +192,7 @@ best=0
 for epoch in range(epochs):
   scheduler.step()
   print("starting training epoch: ", epoch)
-  loss, f1_train_plant, f1_train_disease = train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interval, len(train_idx))
+  loss, f1 = train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interval, len(train_idx))
   f1_val = validate(val_loader, model, epoch, use_gpu, log_interval, len(valid_idx))
   print("finished training epoch: ", epoch)
 
