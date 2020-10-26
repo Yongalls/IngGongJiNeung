@@ -159,6 +159,7 @@ def validate(val_loader, model, epoch, use_gpu, log_interval, total_num):
 neptune.init('jadohu/IngGongJiNeung', api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiM2JiNmYzMzQtMDYxYS00ZGVhLTk4NmMtZDY3YjA0NTc2NDAxIn0=')
 neptune.create_experiment(name='Ing')
 exp_id = neptune.get_experiment()._id
+print(exp_id)
 
 use_gpu = torch.cuda.is_available()
 if use_gpu:

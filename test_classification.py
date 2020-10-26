@@ -4,6 +4,7 @@ from torch.autograd import Variable
 from torchvision import transforms
 import torchvision.models as models
 import pandas as pd
+import csv
 import numpy as np
 from sklearn.metrics import f1_score
 import os
@@ -15,7 +16,8 @@ class_disease = 21
 
 # opts
 img_size = 224 #256? 224?
-ckp_name = "32_plant_best.pt"
+ckp_name = "IN-60_plant_best.pt"
+log_interval = 5
 
 try:
   import google.colab
@@ -64,9 +66,13 @@ if use_gpu:
   model.cuda()
 
 model.load_state_dict(torch.load(os.path.join(rootPath,'run',ckp_name)))
+print("Model loaded")
 model.eval()
-answer_list=[]
-f = open("answer.csv", "w")
+
+f = open(os.path.join(rootPath, 'test_result', '60_plant_test.tsv'), 'wt')
+tsv_writer = csv.writer(f, delimiter='\t')
+
+img_idx = 0
 
 with torch.no_grad():
     for i_batch, data in enumerate(test_loader):
@@ -76,13 +82,15 @@ with torch.no_grad():
         preds = model(img)
         pred_plant = torch.softmax(preds[:, :class_plants], dim=1)
         pred_disease = torch.softmax(preds[:, class_plants:], dim=1)
+        if i_batch % log_interval == 0:
+          print("Test [{}/{}]".format(i_batch * batch_size, len(test_loader.dataset)))
         for i in range(preds.shape[0]):
             pred_plant_num = torch.argmax(pred_plant, dim=1)[i]
             pred_plant_num = pred_plant_num.item()
             pred_disease_num = torch.argmax(pred_disease, dim=1)[i]
             pred_disease_num = pred_disease_num.item()
-            answer=str(i_batch*batch_size+i)+'.jpg'+'_'+str(pred_plant_num)+'_'+str(pred_disease_num)
-            answer_list.append(answer)
-for i in range(len(answer_list)):
-    f.write(answer_list[i]+'\n')
+            tsv_writer.writerow([str(img_idx) + '.jpg', pred_plant_num, pred_disease_num])
+            img_idx += 1
+
 f.close()
+print("Test finished")
