@@ -16,9 +16,10 @@ num_train = 16000
 combined_label = [(3,5), (3,20), (4,2), (4,7), (4,11),(5,8), (7,1), (7,20), (8,6), (8,9), (10,20), (11,14), (13,1), (13,6), (13,9), (13,15), (13,16), (13,17), (13,18), (13,20)]
 
 # opts
+model_name = 'resnet50'
 img_size = 224 #256? 224?
 log_interval = 10
-epochs = 100
+epochs = 200
 validation_ratio = 0.2
 
 try:
@@ -133,17 +134,31 @@ def validate(val_loader, model, epoch, use_gpu, log_interval, total_num):
 
       if i_batch % log_interval == 0:
         print('Validate Epoch:{} [{}/{}] f1:{:.3f}({:.3f}) Accuracy:{:.2f} ({:.2f})'.format(epoch, i_batch * batch_size, total_num, f1s.val, f1s.avg,  acces.val,acces.avg))
-        neptune.log_metric("val_f1", f1s.avg)
   return f1s.avg
 
 
-neptune.init('jadohu/IngGongJiNeung', api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiM2JiNmYzMzQtMDYxYS00ZGVhLTk4NmMtZDY3YjA0NTc2NDAxIn0=')
+neptune.init('jadohu/IngGongJiNeung', api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vdWkubmVwdHVuZS5haSIsImFwaV91cmwiOiJodHRwczovL3VpLm5lcHR1bmUuYWkiLCJhcGlfa2V5IjoiZDc1ZWNkYjYtMTRiOC00ZTlhLTlmNGQtOTAzMjc2YjdlOWFlIn0==')
 neptune.create_experiment(name='Ing')
 exp_id = neptune.get_experiment()._id
 
 use_gpu = torch.cuda.is_available()
 if use_gpu:
   print("using gpu")
+
+if model_name == 'resnet50':
+    model = models.resnet50(pretrained=True)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, class_combined_label)
+    batch_size = 100
+elif model_name == 'efficientnet-b4':
+    import sys
+    sys.path.append(rootPath)
+    from efficientnet_pytorch import EfficientNet
+    model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=20)
+    batch_size = 50
+else:
+    print("Set your model name")
+    raise ValueError
 
 indices = np.array(list(range(num_train)))
 # np.random.shuffle(indices)
@@ -173,11 +188,6 @@ val_loader = torch.utils.data.DataLoader(
                                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])),
                   batch_size = batch_size, sampler = valid_sampler)
 
-
-model = models.resnet50(pretrained=True)
-num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, class_combined_label)
-
 if use_gpu:
   model.cuda()
 
@@ -194,7 +204,10 @@ for epoch in range(epochs):
   print("starting training epoch: ", epoch)
   loss, f1 = train(train_loader, model, criterion, optimizer, epoch, use_gpu, log_interval, len(train_idx))
   f1_val = validate(val_loader, model, epoch, use_gpu, log_interval, len(valid_idx))
+  neptune.log_metric("val_f1", f1_val)
   print("finished training epoch: ", epoch)
+
+  # torch.save(model.state_dict(), os.path.join(rootPath, 'run', exp_id + "_last.pt"))
 
   if f1_val > best:
     file_name = os.path.join(rootPath, 'run', exp_id + "_plant_best.pt")
